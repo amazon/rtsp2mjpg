@@ -1,0 +1,36 @@
+HTTPPort 8090
+HTTPBindAddress 0.0.0.0
+MaxHTTPConnections 2000
+MaxClients 1000
+MaxBandwidth 10000
+
+<Feed feed.ffm>
+File /tmp/feed.ffm
+FileMaxSize 50M
+</Feed>
+
+<Stream live.mjpg>
+Feed feed.ffm
+{% for key, value in params.items() -%}
+{% if value == '' or value == True or value == 'true' -%}
+{{ key }}
+{% elif value == False or value == 'false'-%}
+# {{ key }}
+{% else -%}
+{{ key }} {{ value }}
+{% endif -%}
+{% endfor -%}
+</Stream>
+
+<Stream still.jpg>
+Feed feed.ffm
+Format jpeg
+VideoFrameRate 1
+VideoSize 320x240
+VideoQMin 1
+VideoQMax 15
+VideoIntraOnly
+NoAudio
+Strict -1
+NoDefaults
+</Stream>

@@ -1,0 +1,16 @@
+[[source]]
+url = "https://pypi.python.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+Werkzeug = "==0.16.1"
+Flask = "*"
+flask-restplus = "*"
+redis = "*"
+docker = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"

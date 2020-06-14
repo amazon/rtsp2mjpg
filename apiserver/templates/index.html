@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RTSP to MJPEG</title>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.0/jquery.min.js"></script>
+
+    <!-- Latest compiled and minified CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <script
+      src="https://code.jquery.com/jquery-3.5.1.min.js"
+      integrity="sha256-9/aliU8dGd2tb6OSsuzixeV4y/faTqgFtohetphbbj0="
+      crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+      integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+      crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"
+      integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI"
+      crossorigin="anonymous"></script>
+    <link href="https://maxcdn.bootstrapcdn.com/font-awesome/4.6.3/css/font-awesome.min.css" rel='stylesheet'>
+</head>
+<body>
+<div class="container">
+  <br><br>
+  <div id="alert-added" class="alert alert-success alert-dismissible fade show" role="alert" style="display:none;">
+    Stream added and should appear shortly. If it still does not appear, please reload the page.
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
+  <div id="alert-stopped" class="alert alert-success alert-dismissible fade show" role="alert" style="display:none;">
+    Stream stopped
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
+  <div id="alert-started" class="alert alert-success alert-dismissible fade show" role="alert" style="display:none;">
+    Stream started
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
+  <div id="alert-deleted" class="alert alert-success alert-dismissible fade show" role="alert" style="display:none;">
+    Stream deleted
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
+  <div id="alert-updated" class="alert alert-success alert-dismissible fade show" role="alert" style="display:none;">
+    Stream configuration updated
+    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+      <span aria-hidden="true">&times;</span>
+    </button>
+  </div>
+    <br><br>
+    <form class="form-inline" id="form-add">
+      <div class="form-group">
+        <label class="sr-only" for="nameInput">Stream name</label>
+        <input type="text" class="form-control" id="nameInput" placeholder="stream-01">
+      </div>
+      <div class="form-group">
+        <label class="sr-only" for="urlInput">RTSP url</label>
+        <input type="text" class="form-control" id="urlInput" placeholder="rtsp://freja.hiof.no:1935/rtplive/definst/hessdalen03.stream">
+      </div>
+      <div class="form-group">
+        <button class="btn btn-primary" type="submit">
+          <span id="add-loader" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:none;"></span>
+          Add
+        </button>
+      </div>
+    </form>
+    <br>
+    <div id="stream-content">
+      {% if not streams %}
+      <ul class="list-group">
+        <li class="list-group-item list-group-item-info">
+        No stream present.
+        </li>
+      </ul>
+      {% else %}
+      {% for s in streams %}
+      <div class="row">
+        <div class="col-9">
+          <a target="_blank" rel="noopener noreferrer" href={{ s.name }}.mjpg>
+  	       <img src={{ s.name }}.mjpg?refresh="0.0" class="img-fluid">
+          </a>
+        </div>
+        <div class="col-3">
+          <form class="form-edit" id="form-edit-{{s.name}}">
+            <div class="form-group row">
+              <label for="nameInput" class="col-sm-3 col-form-label">Name</label>
+              <div class="col-sm-9">
+                <input type="text" class="form-control stream-name-input" id="{{s.name}}-name-input" value="{{s.name}}" readonly>
+              </div>
+            </div>
+            <div class="form-group row">
+              <label for="nameInput" class="col-sm-3 col-form-label">Status</label>
+              <div class="col-sm-9">
+                <input type="text" class="form-control" value="{{s.status}} ({{s.health}})" readonly>
+              </div>
+            </div>
+            <div class="form-group row">
+              <label for="urlInput" class="col-sm-3 col-form-label">URL</label>
+              <div class="col-sm-9">
+                <input type="text" class="form-control stream-url-input" id="{{s.name}}-url-input" value="{{s.url}}">
+              </div>
+            </div>
+            <div class="form-group row">
+              <label for="videoFrameRateInput" class="col-sm-3 col-form-label">Frame rate</label>
+              <div class="col-sm-9">
+              <input type="text" class="form-control" id="{{s.name}}-framerate-input" value="{{s.ffserverParams.VideoFrameRate}}">
+            </div>
+            </div>
+            <div class="form-group row">
+              <label for="videoSizeInput" class="col-sm-3 col-form-label">Size (WxH)</label>
+              <div class="col-sm-9">
+              <input type="text" class="form-control" id="{{s.name}}-videosize-input" value="{{s.ffserverParams.VideoSize}}">
+            </div>
+            </div>
+            <button data-stream-name="{{ s.name }}" class="apply-btn btn btn-primary" type="submit">
+              <span id="apply-{{s.name}}-loader" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" style="display:none;"></span>
+              Apply
+            </button>
+            <button data-stream-name="{{ s.name }}" class="stop-stream btn btn-warning" type="stop">
+              <span id="stop-{{ s.name }}-loader" class="spinner-border spinner-border-sm" role="status"aria-hidden="true" style="display:none;"></span>
+              Stop
+            </button>
+            <button data-stream-name="{{ s.name }}" class="start-stream btn btn-success" type="start">
+              <span id="start-{{ s.name }}-loader" class="spinner-border spinner-border-sm" role="status"aria-hidden="true" style="display:none;"></span>
+              Start
+            </button>
+            <button data-stream-name="{{ s.name }}" class="delete-stream btn btn-danger" type="delete">
+              <span id="delete-{{ s.name }}-loader" class="spinner-border spinner-border-sm" role="status"aria-hidden="true" style="display:none;"></span>
+              Delete
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+      <br>      
+      {% endif %}
+    </div>
+  </div>
+  <script>
+    $(document).ready(function() {
+
+      $("#form-add").on('submit', function(event) {
+        event.preventDefault();
+        $.ajax({
+          data : {
+            name : $('#nameInput').val(),
+            url : $('#urlInput').val()
+          },
+          type : 'POST',
+          url : '/api/streams',
+          beforeSend: function () {
+            $("#add-loader").show();
+          },
+          complete: function () {
+            location.reload();
+            $("#add-loader").hide();
+          },
+          success: function () {
+            $("#alert-added").show();
+          }
+        })
+      });
+
+    });
+
+    $(".apply-btn").click(function() {
+      var stream = $(this).attr('data-stream-name');
+      event.preventDefault();
+      $.ajax({
+        type : 'PUT',
+        url : '/api/streams/' + stream,
+        data: JSON.stringify({
+          name: stream,
+          url: $(`#${stream}-url-input`).val(),
+          ffserverParams: {
+            VideoFrameRate: $(`#${stream}-framerate-input`).val(),
+            VideoSize: $(`#${stream}-videosize-input`).val()
+          }
+        }),
+        headers: {
+            "Content-Type": "application/json"
+        },
+        dataType: 'json',
+        beforeSend: function () {
+          $("#apply-"+stream+"-loader").show();
+        },
+        complete: function () {
+          location.reload();
+          $("#apply-"+stream+"-loader").hide();
+        },
+        success: function () {
+          $("#alert-updated").show();
+        }
+      })
+    });
+
+    $('.stop-stream').click(function () {
+      var stream = $(this).attr('data-stream-name');
+        event.preventDefault();
+        $.ajax({
+          url: '/api/streams/' + stream + '/stop',
+          type: 'POST',
+          beforeSend: function () {
+            $("#stop-"+stream+"-loader").show();
+          },
+          complete: function () {
+              location.reload();
+            $("#stop-"+stream+"-loader").hide();
+          },
+          success: function () {
+              $("#alert-stopped").show();
+          }
+      })
+    });
+
+    $('.start-stream').click(function () {
+      var stream = $(this).attr('data-stream-name');
+        event.preventDefault();
+        $.ajax({
+          url: '/api/streams/' + stream + '/start',
+          type: 'POST',
+          beforeSend: function () {
+            $("#start-"+stream+"-loader").show();
+          },
+          complete: function () {
+              location.reload();
+            $("#start-"+stream+"-loader").hide();
+          },
+          success: function () {
+              $("#alert-started").show();
+          }
+      })
+    });
+
+    $('.delete-stream').click(function () {
+      var stream = $(this).attr('data-stream-name');
+        event.preventDefault();
+        $.ajax({
+          url: '/api/streams/' + stream,
+          type: 'DELETE',
+          beforeSend: function () {
+            $("#delete-"+stream+"-loader").show();
+          },
+          complete: function () {
+              location.reload();
+            $("#delete-"+stream+"-loader").hide();
+          },
+          success: function () {
+              $("#alert-deleted").show();
+          }
+      })
+    });
+  </script>
+</body>
+</html>
