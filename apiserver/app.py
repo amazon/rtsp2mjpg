@@ -32,7 +32,7 @@ stream = api.model('Stream', {
 
 class StreamController(object):
 
-    FFMPEG_DOCKER_IMAGE = 'eroji/rtsp2mjpg'
+    FFMPEG_DOCKER_IMAGE = 'rtsp2mjpg'
 
     FFMPEG_DOCKER_HEALTHCHECK =  {
         "Test": [
