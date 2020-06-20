@@ -94,8 +94,12 @@ class StreamController(object):
     def __get_container_info(self, container):
         env = self.__get_env_as_dict(container)
         logger.info(env)
-        ffserverParams = json.loads(env.get('FFSERVER_PARAMS', {}))
-        return {'name': container.labels['stream.name'],
+        try:
+            ffserverParams = json.loads(env.get('FFSERVER_PARAMS', {}))
+        except json.decoder.JSONDecodeError:
+            logger.warning("cannot load ffserver parameters for container {0}".format(container.name))
+            ffserverParams = {}
+        return {'name': container.labels['io.ecamsecure.stream.name'],
                 'url': env['RTSP_URL'],
                 'status': self.STREAM_STATE_MAP.get(container.status, 'unknown'),
                 'health': self.STREAM_STATE_MAP.get(container.attrs['State'].get('Health', {}).get('Status'), 'unknown'),
@@ -110,7 +114,7 @@ class StreamController(object):
         client = docker.from_env()
         containers = client.containers.list(
             all=True,
-            filters={'label': "stream.name={0}".format(stream_name)}
+            filters={'label': "io.ecamsecure.stream.name={0}".format(stream_name)}
         )
         if len(containers)>0:
             return containers[0]
@@ -124,7 +128,7 @@ class StreamController(object):
         streams = [ self.__get_container_info(container) for container in client.containers.list(
                         all=True,
                         ignore_removed=True,
-                        filters={'label': 'app=ffmpeg'})]
+                        filters={'label': 'io.ecamsecure.app=ffmpeg'})]
         return streams
 
     def create(self, config):
@@ -158,7 +162,9 @@ class StreamController(object):
                         restart_policy={'Name': 'always'},
                         environment=env,
                         labels={
+                            'io.ecamsecure.app': 'ffmpeg',
                             'app': 'ffmpeg',
+                            'io.ecamsecure.stream.name': name,
                             'stream.name': name
                         },
                         hostname=name,
