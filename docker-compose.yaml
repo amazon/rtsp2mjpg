@@ -4,7 +4,7 @@ networks:
     name: ffmpeg-network
 services:
   nginx:
-    image: nginx:alpine
+    build: nginx
     restart: always
     links:
       - apiserver
@@ -20,6 +20,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - ffmpeg-network
-        # uncomment next line to enable Swagger UI on port localhost:5000
+# uncomment next line to enable Swagger UI on port localhost:5000
 #   ports:
 #     - "8080:5000"
+    environment:
+      - SUPERVISOR_INTERVAL=5
+      - STOP_AFTER_SECONDS=300

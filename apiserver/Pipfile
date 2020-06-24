@@ -9,6 +9,8 @@ Flask = "*"
 flask-restplus = "*"
 redis = "*"
 docker = "*"
+apscheduler = "*"
+gunicorn = "*"
 
 [dev-packages]
 

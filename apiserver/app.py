@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+import os
 import atexit
 import time
 import docker
@@ -8,11 +9,16 @@ from jinja2 import Template
 import tarfile
 from io import BytesIO
 
+
 import logging as logger
 logger.basicConfig(level="DEBUG")
 
 from flask import Flask, request, render_template
 from flask_restplus import Resource, Api, fields
+
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 api = Api(app, version='1.0', title='ffmpeg API',
@@ -37,7 +43,7 @@ class StreamController(object):
     FFMPEG_DOCKER_HEALTHCHECK =  {
         "Test": [
             "CMD-SHELL",
-            "curl -f http://localhost:8090/still.jpg --max-time 10 --output /dev/null || (pkill -KILL ffmpeg; exit 10)"
+            "curl -f http://localhost:8090/still.jpg --max-time 10 --output /dev/null || exit 1"
         ],
         "Interval": 15000000000,
         "Timeout": 11000000000,
@@ -68,6 +74,10 @@ class StreamController(object):
     FFMPEG_OUTPUT_OPTS = '-async 1 -vsync 1'
     FFSERVER_LOG_LEVEL = 'warning' # one of: quiet, panic, fatal, error, warning, info, verbose, debug, trace
     FFMPEG_LOG_LEVEL = 'warning' # one of: quiet, panic, fatal, error, warning, info, verbose, debug, trace
+    sched = BackgroundScheduler(daemon=True)
+    no_restart_list = set()
+    SUPERVISOR_INTERVAL = int(os.environ.get('SUPERVISOR_INTERVAL', '5'))
+    STOP_AFTER_SECONDS = int(os.environ.get('STOP_AFTER_SECONDS', '300'))
 
     def __get_ffserver_conf(self, params_dict):
         template_str = open('templates/ffserver.conf.j2', 'r').read()
@@ -103,6 +113,8 @@ class StreamController(object):
                 'url': env['RTSP_URL'],
                 'status': self.STREAM_STATE_MAP.get(container.status, 'unknown'),
                 'health': self.STREAM_STATE_MAP.get(container.attrs['State'].get('Health', {}).get('Status'), 'unknown'),
+                'container_status': container.status,
+                'container_health': container.attrs['State'].get('Health', {}).get('Status', 'unknown'),
                 'ffmpegInputOpts': env['FFMPEG_INPUT_OPTS'],
                 'ffmpegOutputOpts': env['FFMPEG_OUTPUT_OPTS'],
                 'ffserverLogLevel': env['FFSERVER_LOG_LEVEL'],
@@ -171,12 +183,8 @@ class StreamController(object):
                         name="more_rtsp2mjpg_ffmpeg_{0}_1".format(name))
 
         container.put_archive('/etc/', ffserver_conf_tar)
-        container.start()
         logger.debug("container created")
-        network = client.networks.get('ffmpeg-network')
-        network.connect(container, aliases=['rtsp2mjpg_'+name])
-        logger.debug("container attached to rtsp2mjpg network")
-        return self.__get_container_info(container)
+        return self.start(name)
 
     def start_all(self):
         for stream in self.describe_streams():
@@ -188,25 +196,44 @@ class StreamController(object):
         for stream in self.describe_streams():
             self.stop(stream['name'])
 
-    def start(self, name):
+    def start(self, name, stop_after_seconds=STOP_AFTER_SECONDS):
         logger.info('starting stream ' + name)
         client = docker.from_env()
         container = self.__get_container_by_stream_name(name)
-        network = client.networks.get('ffmpeg-network')
-        network.connect(container, aliases=['rtsp2mjpg_'+name])
-        container.start()
+        if container.status != 'running':
+            network = client.networks.get('ffmpeg-network')
+            logger.debug("attach container to rtsp2mjpg network")
+            network.connect(container, aliases=['rtsp2mjpg_'+name])
+            logger.debug("container attached to rtsp2mjpg network")
+            container.start()
+            if stop_after_seconds != 0:
+                stop_at = datetime.now() + timedelta(seconds=stop_after_seconds)
+                self.sched.add_job(self.stop,
+                                'date',
+                                run_date=stop_at,
+                                args=[name, True])
+        return self.__get_container_info(container)
 
     def stop(self, name, force=True):
         logger.info('stopping stream ' + name)
         client = docker.from_env()
         container = self.__get_container_by_stream_name(name)
         network = client.networks.get('ffmpeg-network')
+        self.no_restart_list.add(name)
+        logger.debug("no_restart_list: {0}".format(self.no_restart_list))
         if force:
             container.kill()
         else:
             container.stop()
             container.wait()
-            network.disconnect(container, force=True)
+        network.disconnect(container, force=True)
+        self.no_restart_list.remove(name)
+
+    def restart(self, name):
+        logger.info('restarting stream ' + name)
+        client = docker.from_env()
+        container = self.__get_container_by_stream_name(name)
+        container.restart(timeout=3)
 
     def delete(self, name):
         container = self.__get_container_by_stream_name(name)
@@ -216,8 +243,25 @@ class StreamController(object):
         container.remove(force=True)
         return True
 
+    def restart_unhealthy(self):
+        logger.debug('check health')
+        logger.debug("no_restart_list: {0}".format(self.no_restart_list))
+        unhealthy = [ s['name'] for s in self.describe_streams()
+                    if s['container_health'] == 'unhealthy'
+                     and s['container_status'] == 'running'
+                     and not s['name'] in self.no_restart_list ]
+        for  container in unhealthy:
+            logger.debug("restart unhealty container: {0}".format(container))
+            self.restart(container)
+
+    def start_scheduler(self):
+        if self.SUPERVISOR_INTERVAL != 0:
+            self.sched.add_job(self.restart_unhealthy,'interval',
+                            seconds=self.SUPERVISOR_INTERVAL)
+        self.sched.start()
+
 @ns.route('/streams')
-class StreamCollectionCollection(Resource):
+class StreamCollection(Resource):
     def get(self):
         """ Get list of streams.
 
@@ -320,13 +364,16 @@ def index():
     return render_template('index.html',
                            streams=stream_controller.describe_streams())
 
+
+
+stream_controller = StreamController()
+@app.before_first_request
+def initialize():
+    stream_controller.start_scheduler()
+
 def exit_handler():
     logger.debug("exit_handler(): shutting down")
     stream_controller.stop_all()
 
-stream_controller = StreamController()
 atexit.register(exit_handler)
 
-if __name__ == '__main__':
-    stream_controller.start_all()
-    app.run(debug=True, host='0.0.0.0')
