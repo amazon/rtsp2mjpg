@@ -113,6 +113,7 @@ class StreamController(object):
                 'url': env['RTSP_URL'],
                 'status': self.STREAM_STATE_MAP.get(container.status, 'unknown'),
                 'health': self.STREAM_STATE_MAP.get(container.attrs['State'].get('Health', {}).get('Status'), 'unknown'),
+                'is_disconnected': self.is_disconnected(container),
                 'container_status': container.status,
                 'container_health': container.attrs['State'].get('Health', {}).get('Status', 'unknown'),
                 'ffmpegInputOpts': env['FFMPEG_INPUT_OPTS'],
@@ -243,20 +244,29 @@ class StreamController(object):
         container.remove(force=True)
         return True
 
-    def restart_unhealthy(self):
+    def watchdog_task(self):
         logger.debug('check health')
         logger.debug("no_restart_list: {0}".format(self.no_restart_list))
-        unhealthy = [ s['name'] for s in self.describe_streams()
-                    if s['container_health'] == 'unhealthy'
-                     and s['container_status'] == 'running'
-                     and not s['name'] in self.no_restart_list ]
-        for  container in unhealthy:
-            logger.debug("restart unhealty container: {0}".format(container))
-            self.restart(container)
+        logger.debug(self.describe_streams())
+        running_streams = [ s for s in self.describe_streams()
+                     if s['container_status'] == 'running' ]
+        for s in running_streams:
+            if s['container_health'] == 'unhealthy' and not s['name'] in self.no_restart_list:
+                logger.debug("restart unhealty container: {0}".format(s['name']))
+                self.restart(s['name'])
+            if s['is_disconnected']:
+                self.stop(s['name'], force=True)
+
+
+    def is_disconnected(self, container):
+        if container.status == 'running':
+            cmd = "curl -s http://localhost:8090/status.html"
+            res = container.exec_run(cmd, stdout=True)
+            return str(res[1]).find("Bandwidth in use: 0k") != -1
 
     def start_scheduler(self):
         if self.SUPERVISOR_INTERVAL != 0:
-            self.sched.add_job(self.restart_unhealthy,'interval',
+            self.sched.add_job(self.watchdog_task,'interval',
                             seconds=self.SUPERVISOR_INTERVAL)
         self.sched.start()
 
