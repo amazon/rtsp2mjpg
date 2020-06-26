@@ -117,6 +117,7 @@ class StreamController(object):
                 'is_disconnected': self.is_disconnected(container),
                 'container_status': container.status,
                 'container_health': container.attrs['State'].get('Health', {}).get('Status', 'unknown'),
+                'uptime': self.get_uptime(container),
                 'ffmpegInputOpts': env['FFMPEG_INPUT_OPTS'],
                 'ffmpegOutputOpts': env['FFMPEG_OUTPUT_OPTS'],
                 'ffserverLogLevel': env['FFSERVER_LOG_LEVEL'],
@@ -259,9 +260,10 @@ class StreamController(object):
                      if s['container_status'] == 'running' ]
         for s in running_streams:
             if s['container_health'] == 'unhealthy' and not s['name'] in self.no_restart_list:
-                logger.debug("restart unhealty container: {0}".format(s['name']))
+                logger.debug("restart unhealty stream: {0}".format(s['name']))
                 self.restart(s['name'])
-            if s['is_disconnected']:
+            if s['is_disconnected'] and s['uptime'].seconds > 15:
+                logger.info("stop disconnected stream {0}".format(s['name']))
                 self.stop(s['name'], force=True)
 
 
@@ -269,13 +271,22 @@ class StreamController(object):
         if container.status == 'running':
             cmd = "curl -s http://localhost:8090/status.html"
             res = container.exec_run(cmd, stdout=True)
-            return str(res[1]).find("Bandwidth in use: 0k") != -1
+            logger.debug("curl command returned status {0}".format(res[0]))
+            if res[0] == 0:
+                return str(res[1]).find("Bandwidth in use: 0k") != -1
+            else:
+                return False
 
     def start_scheduler(self):
         if self.SUPERVISOR_INTERVAL != 0:
             self.sched.add_job(self.watchdog_task,'interval',
                             seconds=self.SUPERVISOR_INTERVAL)
         self.sched.start()
+
+    def get_uptime(self, container):
+        date_started_str = container.attrs['State']['StartedAt']
+        date_started = datetime.fromisoformat(date_started_str[0:26])
+        return datetime.now() - date_started
 
 @ns.route('/streams')
 class StreamCollection(Resource):
