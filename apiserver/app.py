@@ -17,6 +17,7 @@ from flask import Flask, request, render_template
 from flask_restplus import Resource, Api, fields
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.jobstores.base import JobLookupError
 
 from datetime import datetime, timedelta
 
@@ -212,7 +213,8 @@ class StreamController(object):
                 self.sched.add_job(self.stop,
                                 'date',
                                 run_date=stop_at,
-                                args=[name, True])
+                                args=[name, True],
+                                id="stop_{0}".format(name))
         return self.__get_container_info(container)
 
     def stop(self, name, force=True):
@@ -229,6 +231,11 @@ class StreamController(object):
             container.wait()
         network.disconnect(container, force=True)
         self.no_restart_list.remove(name)
+        try:
+            self.sched.remove_job("stop_{0}".format(name))
+        except JobLookupError:
+            logger.warning("couldn't remove job stop_{0} "
+                           "because it does not exist".format(name))
 
     def restart(self, name):
         logger.info('restarting stream ' + name)
