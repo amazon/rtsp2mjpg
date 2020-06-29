@@ -217,6 +217,8 @@ class StreamController(object):
                                 run_date=stop_at,
                                 args=[name, True],
                                 id="stop_{0}".format(name))
+        if self.__get_container_info(container)['status'] != 'running':
+            time.sleep(1)
         return self.__get_container_info(container)
 
     def stop(self, name, force=True):
