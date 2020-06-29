@@ -79,6 +79,7 @@ class StreamController(object):
     no_restart_list = set()
     SUPERVISOR_INTERVAL = int(os.environ.get('SUPERVISOR_INTERVAL', '5'))
     STOP_AFTER_SECONDS = int(os.environ.get('STOP_AFTER_SECONDS', '300'))
+    WARMUP_PERIOD_SECONDS = int(os.environ.get('WARMUP_PERIOD_SECONDS', '30'))
 
     def __get_ffserver_conf(self, params_dict):
         template_str = open('templates/ffserver.conf.j2', 'r').read()
@@ -262,7 +263,7 @@ class StreamController(object):
             if s['container_health'] == 'unhealthy' and not s['name'] in self.no_restart_list:
                 logger.debug("restart unhealty stream: {0}".format(s['name']))
                 self.restart(s['name'])
-            if s['is_disconnected'] and s['uptime'].seconds > 15:
+            if s['is_disconnected'] and s['uptime'].seconds > self.WARMUP_PERIOD_SECONDS:
                 logger.info("stop disconnected stream {0}".format(s['name']))
                 self.stop(s['name'], force=True)
 

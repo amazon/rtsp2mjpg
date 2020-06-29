@@ -26,3 +26,4 @@ services:
     environment:
       - SUPERVISOR_INTERVAL=15
       - STOP_AFTER_SECONDS=300
+      - WARMUP_PERIOD_SECONDS=30
