@@ -82,7 +82,7 @@
       <div class="row">
         <div class="col-9">
           <a target="_blank" rel="noopener noreferrer" href={{ s.name }}.mjpg>
-  	       <img src={{ s.name }}.mjpg?refresh="0.0" class="img-fluid">
+            <img src={{ s.name }}.mjpg?refresh="0.0" class="img-fluid" id="{{s.name}}-image">
           </a>
         </div>
         <div class="col-3">
@@ -227,7 +227,9 @@
             $("#start-"+stream+"-loader").show();
           },
           complete: function () {
-              location.reload();
+            image_id = "#"+stream+"-image"
+            image_src = $(image_id).attr('src');
+            $(image_id).attr('src', image_src + "?" + Math.random() );
             $("#start-"+stream+"-loader").hide();
           },
           success: function () {
